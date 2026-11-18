@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chúc mừng sinh nhật</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600&family=Dancing+Script:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg1:#fff3f6;--bg2:#ffd3df;--ink:#4a1830;--accent:#c2255c;--trunk:#7a3b4a;
+  --star:rgba(255,140,175,.55);--ground:rgba(194,37,92,.18);color-scheme:light;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--bg1:#1a0b2e;--bg2:#3a1245;--ink:#ffe8ef;--accent:#ff8fab;--trunk:#b5737f;--star:rgba(255,255,255,.8);--ground:rgba(255,143,171,.22);color-scheme:dark}
+}
+:root[data-theme="dark"]{--bg1:#1a0b2e;--bg2:#3a1245;--ink:#ffe8ef;--accent:#ff8fab;--trunk:#b5737f;--star:rgba(255,255,255,.8);--ground:rgba(255,143,171,.22);color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+body{margin:0;height:100%;overflow:hidden;background:linear-gradient(180deg,var(--bg1),var(--bg2));color:var(--ink);font-family:"Be Vietnam Pro",system-ui,sans-serif}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#wish{position:fixed;right:6vw;top:50%;transform:translateY(-50%);width:min(40vw,520px);opacity:0;transition:opacity .9s ease}
+#wish.on{opacity:1}
+h1{font-family:"Dancing Script","Brush Script MT",cursive;font-weight:700;font-size:clamp(2.4rem,5vw,4.2rem);line-height:1.1;margin:0 0 .6em}
+.name{font-weight:600;font-size:clamp(1.1rem,2vw,1.5rem);color:var(--accent);margin:0 0 1.2em}
+#lines p{margin:0 0 .7em;font-size:clamp(.95rem,1.3vw,1.1rem);line-height:1.7;min-height:1.7em}
+#lines p.typing::after{content:"";display:inline-block;width:2px;height:1.05em;margin-left:3px;vertical-align:-.15em;background:var(--accent);animation:blink .8s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.name:empty{display:none}
+button{font:inherit;font-weight:600;margin-top:.8em;padding:.6em 1.3em;border-radius:999px;border:2px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer}
+button:hover{background:var(--accent);color:var(--bg1)}
+button:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+button[hidden]{display:none}
+@media (max-width:859px){
+  #wish{left:0;right:0;top:54%;transform:none;width:auto;padding:0 28px;text-align:center}
+  h1{font-size:clamp(2rem,9vw,2.8rem)}
+  #wish{top:52%;max-height:46vh;overflow-y:auto}
+  #lines p{font-size:.88rem;line-height:1.55;margin-bottom:.5em}
+}
+@media (prefers-reduced-motion:reduce){#wish{transition:none}#lines p.typing::after{animation:none}}
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+<main id="wish" aria-live="polite">
+  <h1>Chúc mừng sinh nhật Anh</h1>
+  <p class="name" id="name"></p>
+  <div id="lines"></div>
+  <button id="replay" hidden>Xem lại</button>
+</main>
+<script>
+/* ====== Chỉnh nội dung tại đây ====== */
+const NAME = "";
+const WISHES = [
+  "Chúc mừng sinh nhật cậu. Bước sang tuổi mới, mong mọi điều dịu dàng và tốt đẹp nhất sẽ luôn tìm đến với cậu.",
+  "Chúc cậu những ngày sắp tới thật nhiều bình yên, công việc hay học tập đều suôn sẻ và luôn giữ được nụ cười rạng rỡ như hiện tại.",
+  "Dù có bận rộn thế nào, cũng nhớ dành thời gian chăm sóc và yêu thương bản thân thật nhiều nhé.",
+  "Hy vọng tuổi mới sẽ mang đến cho cậu thật nhiều niềm vui nhỏ bé mỗi ngày."
+];
+/* ==================================== */
+
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+const wishEl = document.getElementById("wish"), linesEl = document.getElementById("lines"), replayBtn = document.getElementById("replay");
+document.getElementById("name").textContent = NAME;
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const T = { branch: 1800, bloom0: 2600, bloomEnd: 6000, slide0: 7000, slide: 1500 };
+const COLORS = ["#ff5c8a", "#ff8fab", "#ff3b6b", "#ffb3c6", "#f9c74f", "#ff7aa2", "#e63971"];
+const BRANCHES = [
+  { u: .50, x: -.15, y: -.62, s: 1700 }, { u: .60, x: .17, y: -.70, s: 1900 },
+  { u: .78, x: -.07, y: -.86, s: 2200 }, { u: .84, x: .08, y: -.90, s: 2350 }
+];
+let W, H, dpr, wide, L, tk, hearts = [], stars = [], petals = [], t0, shown = false, run = 0, lastNow = 0, nextPetal = 0;
+
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const easeIO = p => p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+const easeBack = p => 1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2);
+
+function readTokens() {
+  const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
+  tk = { trunk: g("--trunk"), star: g("--star"), ground: g("--ground") };
+}
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readTokens);
+
+function heartPath(s) {
+  ctx.beginPath();
+  ctx.moveTo(0, -s * .25);
+  ctx.bezierCurveTo(0, -s * .5, -s * .5, -s * .5, -s * .5, -s * .2);
+  ctx.bezierCurveTo(-s * .5, s * .1, 0, s * .3, 0, s * .5);
+  ctx.bezierCurveTo(0, s * .3, s * .5, s * .1, s * .5, -s * .2);
+  ctx.bezierCurveTo(s * .5, -s * .5, 0, -s * .5, 0, -s * .25);
+  ctx.closePath();
+}
+
+function layout() {
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  wide = W >= 860;
+  const total = wide ? Math.min(H * .8, W * .5) : Math.min(H * .44, W * .95);
+  const cw = total * .64, k = cw / 32, trunkH = total * .46;
+  L = { total, cw, k, trunkH, cy: -trunkH * .93 - 17 * k,
+        x0: W / 2, y0: wide ? H * .9 : H * .78, x1: wide ? W * .27 : W / 2, y1: wide ? H * .9 : H * .5 };
+  readTokens();
+  hearts = [];
+  const N = wide ? 560 : 420;
+  for (let i = 0; i < N; i++) {
+    const t = Math.random() * Math.PI * 2;
+    const s = Math.random() < .28 ? 1 : Math.sqrt(Math.random()) * .96;
+    const hx = 16 * Math.pow(Math.sin(t), 3);
+    const hy = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+    const x = hx * s * k, y = L.cy - hy * s * k;
+    const d = clamp((y - (L.cy - 12 * k)) / (29 * k));
+    hearts.push({ x, y, size: k * (.7 + Math.random() * .9),
+      delay: T.bloom0 + (1 - d) * (T.bloomEnd - T.bloom0 - 800) + Math.random() * 400,
+      color: COLORS[(Math.random() * COLORS.length) | 0], rot: (Math.random() - .5) * .6, ph: Math.random() * 6.28 });
+  }
+  stars = Array.from({ length: 70 }, () => ({ x: Math.random() * W, y: Math.random() * H * .8, r: .6 + Math.random() * 1.4, ph: Math.random() * 6.28 }));
+}
+
+const trunkPt = u => ({ x: Math.sin(u * 4.2) * L.total * .012, y: -u * L.trunkH });
+
+function drawTrunk(p) {
+  const steps = 40;
+  ctx.strokeStyle = tk.trunk; ctx.lineCap = "round";
+  for (let i = 0; i < steps; i++) {
+    const a = i / steps; if (a >= p) break;
+    const b = Math.min((i + 1) / steps, p), A = trunkPt(a), B = trunkPt(b);
+    ctx.lineWidth = L.total * (.05 - .032 * a);
+    ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+  }
+}
+
+function drawBranch(b, e) {
+  const p = clamp((e - b.s) / 900); if (p <= 0) return;
+  const P0 = trunkPt(b.u), P2 = { x: b.x * L.total, y: b.y * L.total };
+  const P1 = { x: P0.x, y: P0.y + (P2.y - P0.y) * .6 }, n = 24;
+  ctx.strokeStyle = tk.trunk; ctx.lineCap = "round";
+  for (let i = 0; i < n; i++) {
+    const a = i / n; if (a >= p) break;
+    const c = Math.min((i + 1) / n, p);
+    const q = t => ({ x: (1 - t) * (1 - t) * P0.x + 2 * (1 - t) * t * P1.x + t * t * P2.x, y: (1 - t) * (1 - t) * P0.y + 2 * (1 - t) * t * P1.y + t * t * P2.y });
+    const A = q(a), B = q(c);
+    ctx.lineWidth = L.total * .014 * (1 - a * .6);
+    ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+  }
+}
+
+function frame(now) {
+  const e = now - t0, dt = Math.min(.05, (now - lastNow) / 1000 || .016); lastNow = now;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = tk.star;
+  for (const s of stars) { ctx.globalAlpha = .35 + .65 * Math.abs(Math.sin(e / 900 + s.ph)); ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.283); ctx.fill(); }
+  ctx.globalAlpha = 1;
+
+  const sp = easeIO(clamp((e - T.slide0) / T.slide));
+  const ox = L.x0 + (L.x1 - L.x0) * sp, oy = L.y0 + (L.y1 - L.y0) * sp;
+  ctx.save(); ctx.translate(ox, oy);
+
+  const tp = easeIO(clamp(e / 2400));
+  ctx.fillStyle = tk.ground; ctx.beginPath();
+  ctx.ellipse(0, 4, L.total * .26 * tp, L.total * .02, 0, 0, 6.283); ctx.fill();
+  drawTrunk(tp);
+  for (const b of BRANCHES) drawBranch(b, e);
+
+  const beat = e > T.bloomEnd ? 1 + .012 * Math.sin(e / 420) : 1;
+  ctx.save(); ctx.translate(0, L.cy); ctx.scale(beat, beat); ctx.translate(0, -L.cy);
+  for (const h of hearts) {
+    const p = clamp((e - h.delay) / 700); if (p <= 0) continue;
+    ctx.save();
+    ctx.translate(h.x + Math.sin(e / 900 + h.ph) * 1.2, h.y);
+    ctx.rotate(h.rot); ctx.globalAlpha = Math.min(1, p * 2); ctx.fillStyle = h.color;
+    heartPath(h.size * easeBack(p)); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore(); ctx.restore();
+
+  if (e > T.bloomEnd && !reduce) {
+    if (now > nextPetal && petals.length < 40) {
+      nextPetal = now + 260;
+      petals.push({ x: ox + (Math.random() - .5) * L.cw, y: oy + L.cy - L.k * 6 + Math.random() * L.k * 10,
+        v: 25 + Math.random() * 30, s: L.k * (.4 + Math.random() * .5), c: COLORS[(Math.random() * COLORS.length) | 0], ph: Math.random() * 6.28 });
+    }
+  }
+  for (let i = petals.length - 1; i >= 0; i--) {
+    const q = petals[i]; q.y += q.v * dt; q.x += Math.sin(now / 700 + q.ph) * .4;
+    if (q.y > H + 20) { petals.splice(i, 1); continue; }
+    ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(Math.sin(now / 600 + q.ph) * .5); ctx.globalAlpha = .85; ctx.fillStyle = q.c;
+    heartPath(q.s); ctx.fill(); ctx.restore();
+  }
+
+  if (!shown && e > T.slide0 + 700) showText();
+  requestAnimationFrame(frame);
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function showText() {
+  shown = true; const id = ++run;
+  wishEl.classList.add("on");
+  for (const line of WISHES) {
+    const p = document.createElement("p"); linesEl.appendChild(p);
+    if (reduce) { p.textContent = line; continue; }
+    p.classList.add("typing");
+    await sleep(500);
+    for (let i = 1; i <= line.length; i++) {
+      if (id !== run) return;
+      p.textContent = line.slice(0, i); await sleep(30);
+    }
+    p.classList.remove("typing");
+  }
+  if (id === run) replayBtn.hidden = false;
+}
+
+function restart() {
+  run++; shown = false; petals = [];
+  wishEl.classList.remove("on"); linesEl.textContent = ""; replayBtn.hidden = true;
+  t0 = performance.now();
+}
+replayBtn.addEventListener("click", restart);
+addEventListener("resize", layout);
+
+layout();
+t0 = performance.now() - (reduce ? 20000 : 0);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
